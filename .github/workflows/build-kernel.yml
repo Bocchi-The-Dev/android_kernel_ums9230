@@ -1,10 +1,8 @@
 name: Build Kernel
-
 on:
   workflow_dispatch:
   push:
     branches: [ master ]
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -17,12 +15,56 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y flex bison bc cpio libssl-dev xz-utils
+          sudo apt-get install -y flex bison bc cpio libssl-dev xz-utils zip
 
       - name: Build Image
         run: |
           make LLVM=1 LLVM_IAS=1 O="out" unisoc_defconfig
           make LLVM=1 LLVM_IAS=1 O="out" -j$(nproc) Image
+
+      - name: Clone AnyKernel3
+        run: |
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3 AK3
+          rm -rf AK3/ramdisk AK3/patch AK3/.git
+          cp out/arch/arm64/boot/Image AK3/Image
+
+      - name: Write anykernel.sh
+        run: |
+          cat > AK3/anykernel.sh << 'EOF'
+          properties() { '
+          kernel.string=nova kernel for Infinix Smart 8 (X6525)
+          do.devicecheck=1
+          do.modules=0
+          do.systemless=1
+          do.cleanup=1
+          do.cleanuponabort=0
+          device.name1=X6525
+          device.name2=Infinix-X6525
+          supported.patchlevels=
+          supported.versions=
+          '; } # end properties
+
+          block=boot;
+          is_slot_device=1;
+          ramdisk_compression=auto;
+          patch_vbmeta_flag=auto;
+
+          . tools/ak3-core.sh
+          dump_boot
+          write_boot
+          EOF
+
+      - name: Zip AK3 package
+        run: |
+          cd AK3
+          zip -r9 ../nova-kernel-${{ github.sha }}.zip . -x ".git*"
+
+      - name: Upload AK3 zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: AK3-nova-kernel-${{ github.sha }}
+          path: nova-kernel-${{ github.sha }}.zip
+          if-no-files-found: warn
 
       - name: Compress Image with xz -9e
         run: |
