@@ -1,10 +1,8 @@
 name: Build Kernel
-
 on:
   workflow_dispatch:
   push:
     branches: [ master ]
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -17,20 +15,38 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y flex bison bc cpio libssl-dev xz-utils
+          sudo apt-get install -y flex bison bc cpio libssl-dev xz-utils zip git
 
       - name: Build Image
         run: |
           make LLVM=1 LLVM_IAS=1 O="out" unisoc_defconfig
           make LLVM=1 LLVM_IAS=1 O="out" -j$(nproc) Image
 
-      - name: Compress Image with xz -9e
+      - name: Clone AnyKernel3 template
         run: |
-          xz -9e -k -c out/arch/arm64/boot/Image > out/arch/arm64/boot/Image.xz
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git AnyKernel3
+          rm -rf AnyKernel3/.git
 
-      - name: Upload build output
+      - name: Configure anykernel.sh
+        run: |
+          cd AnyKernel3
+          sed -i 's/^kernel.string=.*/kernel.string=NovaKernel | Infinix Smart 8 (X6525)/' anykernel.sh
+          sed -i 's/^do.devicecheck=.*/do.devicecheck=1/' anykernel.sh
+          sed -i 's/^device.name1=.*/device.name1=X6525/' anykernel.sh
+          sed -i 's/^device.name2=.*/device.name2=Infinix-X6525/' anykernel.sh
+          sed -i 's/^device.name3=.*/device.name3=Smart8/' anykernel.sh
+          sed -i 's#^block=.*#block=/dev/block/bootdevice/by-name/boot;#' anykernel.sh
+          sed -i 's/^is_slot_device=.*/is_slot_device=1;/' anykernel.sh
+
+      - name: Package AnyKernel3 zip
+        run: |
+          cp out/arch/arm64/boot/Image AnyKernel3/Image
+          cd AnyKernel3
+          zip -r9 "../NovaKernel-X6525-${GITHUB_SHA::7}.zip" . -x ".git*" "README.md"
+
+      - name: Upload AnyKernel3 zip
         uses: actions/upload-artifact@v4
         with:
-          name: kernel-Image-${{ github.sha }}
-          path: out/arch/arm64/boot/Image.xz
+          name: NovaKernel-X6525-${{ github.sha }}
+          path: NovaKernel-X6525-*.zip
           if-no-files-found: warn
