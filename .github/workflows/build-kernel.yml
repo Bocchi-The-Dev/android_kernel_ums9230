@@ -21,7 +21,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y flex bison bc cpio libssl-dev xz-utils zip git
+          sudo apt-get install -y flex bison bc cpio libssl-dev xz-utils git
 
       - name: Build Image
         run: |
@@ -45,18 +45,18 @@ jobs:
           sed -i 's/^device.name3=.*/device.name3=Infinix-X6525/' anykernel.sh
           sed -i 's/^device.name4=.*/device.name4=Smart8/' anykernel.sh
           sed -i 's/^device.name5=.*/device.name5=M5A/' anykernel.sh
-          sed -i 's#^block=.*#block=/dev/block/bootdevice/by-name/boot;#' anykernel.sh
-          sed -i 's/^is_slot_device=.*/is_slot_device=1;/' anykernel.sh
+          sed -i 's/^BLOCK=.*/BLOCK=auto;/' anykernel.sh
+          sed -i 's/^IS_SLOT_DEVICE=.*/IS_SLOT_DEVICE=1;/' anykernel.sh
+          # strip the sample ramdisk edits (init.tuna.rc/fstab.tuna) from the reference tuna script -
+          # they target files that don't exist on this device and would fail/abort the flash
+          sed -i '/^# init.rc/,/^write_boot;/{/^write_boot;/!d}' anykernel.sh
 
-      - name: Package AnyKernel3 zip
-        run: |
-          cp out/arch/arm64/boot/Image AnyKernel3/Image
-          cd AnyKernel3
-          zip -r9 "../NovaKernel-X6525-${GITHUB_SHA::7}.zip" . -x ".git*" "README.md"
+      - name: Copy kernel Image into AnyKernel3
+        run: cp out/arch/arm64/boot/Image AnyKernel3/Image
 
       - name: Upload AnyKernel3 zip
         uses: actions/upload-artifact@v4
         with:
           name: NovaKernel-X6525-${{ github.sha }}
-          path: NovaKernel-X6525-*.zip
-          if-no-files-found: warn
+          path: AnyKernel3/
+          if-no-files-found: error
