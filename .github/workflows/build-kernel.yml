@@ -1,6 +1,12 @@
 name: Build Kernel
 on:
   workflow_dispatch:
+    inputs:
+      device_name:
+        description: 'Device codename to match (ro.product.device / ro.build.product)'
+        required: false
+        default: 'M5A'
+        type: string
   push:
     branches: [ master ]
 jobs:
@@ -28,13 +34,17 @@ jobs:
           rm -rf AnyKernel3/.git
 
       - name: Configure anykernel.sh
+        env:
+          DEVICE_NAME: ${{ github.event.inputs.device_name || 'M5A' }}
         run: |
           cd AnyKernel3
           sed -i 's/^kernel.string=.*/kernel.string=NovaKernel | Infinix Smart 8 (X6525)/' anykernel.sh
           sed -i 's/^do.devicecheck=.*/do.devicecheck=1/' anykernel.sh
-          sed -i 's/^device.name1=.*/device.name1=X6525/' anykernel.sh
-          sed -i 's/^device.name2=.*/device.name2=Infinix-X6525/' anykernel.sh
-          sed -i 's/^device.name3=.*/device.name3=Smart8/' anykernel.sh
+          sed -i "s/^device.name1=.*/device.name1=${DEVICE_NAME}/" anykernel.sh
+          sed -i 's/^device.name2=.*/device.name2=X6525/' anykernel.sh
+          sed -i 's/^device.name3=.*/device.name3=Infinix-X6525/' anykernel.sh
+          sed -i 's/^device.name4=.*/device.name4=Smart8/' anykernel.sh
+          sed -i 's/^device.name5=.*/device.name5=M5A/' anykernel.sh
           sed -i 's#^block=.*#block=/dev/block/bootdevice/by-name/boot;#' anykernel.sh
           sed -i 's/^is_slot_device=.*/is_slot_device=1;/' anykernel.sh
 
