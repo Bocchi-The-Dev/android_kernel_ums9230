@@ -1,10 +1,14 @@
 name: Build Kernel
-
 on:
   workflow_dispatch:
+    inputs:
+      device_name:
+        description: 'Device codename to match (ro.product.device / ro.build.product)'
+        required: false
+        default: 'M5A'
+        type: string
   push:
     branches: [ master ]
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -17,20 +21,42 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y flex bison bc cpio libssl-dev xz-utils
+          sudo apt-get install -y flex bison bc cpio libssl-dev xz-utils git
 
       - name: Build Image
         run: |
           make LLVM=1 LLVM_IAS=1 O="out" unisoc_defconfig
           make LLVM=1 LLVM_IAS=1 O="out" -j$(nproc) Image
 
-      - name: Compress Image with xz -9e
+      - name: Clone AnyKernel3 template
         run: |
-          xz -9e -k -c out/arch/arm64/boot/Image > out/arch/arm64/boot/Image.xz
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git AnyKernel3
+          rm -rf AnyKernel3/.git
 
-      - name: Upload build output
+      - name: Configure anykernel.sh
+        env:
+          DEVICE_NAME: ${{ github.event.inputs.device_name || 'M5A' }}
+        run: |
+          cd AnyKernel3
+          sed -i 's/^kernel.string=.*/kernel.string=NovaKernel | Infinix Smart 8 (X6525)/' anykernel.sh
+          sed -i 's/^do.devicecheck=.*/do.devicecheck=1/' anykernel.sh
+          sed -i "s/^device.name1=.*/device.name1=${DEVICE_NAME}/" anykernel.sh
+          sed -i 's/^device.name2=.*/device.name2=X6525/' anykernel.sh
+          sed -i 's/^device.name3=.*/device.name3=Infinix-X6525/' anykernel.sh
+          sed -i 's/^device.name4=.*/device.name4=Smart8/' anykernel.sh
+          sed -i 's/^device.name5=.*/device.name5=M5A/' anykernel.sh
+          sed -i 's/^BLOCK=.*/BLOCK=boot;/' anykernel.sh
+          sed -i 's/^IS_SLOT_DEVICE=.*/IS_SLOT_DEVICE=1;/' anykernel.sh
+          # strip the sample ramdisk edits (init.tuna.rc/fstab.tuna) from the reference tuna script -
+          # they target files that don't exist on this device and would fail/abort the flash
+          sed -i '/^# init.rc/,/^write_boot;/{/^write_boot;/!d}' anykernel.sh
+
+      - name: Copy kernel Image into AnyKernel3
+        run: cp out/arch/arm64/boot/Image AnyKernel3/Image
+
+      - name: Upload AnyKernel3 zip
         uses: actions/upload-artifact@v4
         with:
-          name: kernel-Image-${{ github.sha }}
-          path: out/arch/arm64/boot/Image.xz
-          if-no-files-found: warn
+          name: NovaKernel-X6525-${{ github.sha }}
+          path: AnyKernel3/
+          if-no-files-found: error
