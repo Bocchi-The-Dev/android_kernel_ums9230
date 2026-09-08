@@ -1,9 +1,3 @@
-[submodule "Baseband-guard"]
-	path = Baseband-guard
-	url = https://github.com/vc-teahouse/Baseband-guard
 [submodule "toolchain"]
 	path = toolchain
 	url = https://github.com/maxsteeel/proton-12
-[submodule "KernelSU"]
-	path = KernelSU
-	url = https://github.com/rsuntk/KernelSU
