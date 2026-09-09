@@ -16,11 +16,13 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          # The kernel build only needs Ubuntu archive packages, and
-          # third-party repos (notably Google Chrome) regularly break
-          # 'apt-get update' with hash mismatches, failing the whole job.
-          sudo rm -f /etc/apt/sources.list.d/google-chrome.list
-          sudo apt-get update
+          # Everything the kernel build needs is preinstalled from the
+          # Ubuntu archive. Third-party repos (notably dl.google.com)
+          # regularly break 'apt-get update' with hash mismatches, so
+          # remove the offending source by content (whatever file holds
+          # it) and don't let a stale mirror fail the whole job.
+          sudo grep -rl "dl.google.com" /etc/apt/sources.list.d/ 2>/dev/null | sudo xargs -r rm -f || true
+          sudo apt-get update || true
           sudo apt-get install -y flex bison bc cpio libssl-dev xz-utils
 
       - name: Build Image
