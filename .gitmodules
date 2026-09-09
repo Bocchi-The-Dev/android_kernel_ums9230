@@ -1,6 +1,4 @@
 [submodule "toolchain"]
 	path = toolchain
 	url = https://github.com/maxsteeel/proton-12
-[submodule "KernelSU"]
-	path = KernelSU
-	url = https://github.com/SukiSU-Ultra/SukiSU-Ultra
+
