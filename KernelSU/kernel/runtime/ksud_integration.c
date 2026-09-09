@@ -29,6 +29,7 @@
 #include "hook/syscall_hook.h"
 #include "hook/syscall_event_bridge.h"
 #include "feature/manual_hook.h"
+#include "kernel_compat.h"
 
 // clang-format off
 static const char KERNEL_SU_RC[] =
