@@ -2,6 +2,7 @@
 #define __KSU_H_KERNEL_COMPAT
 
 #include <linux/fs.h>
+#include <linux/uaccess.h>
 #include <linux/version.h>
 
 /*
