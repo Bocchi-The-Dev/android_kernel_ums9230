@@ -537,6 +537,87 @@ static const struct hashtab_key_params filenametr_key_params = {
 };
 #endif
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 9, 0)
+// 5.4 policydb: struct filename_trans { stype, ttype, tclass, name }
+// as key, struct filename_trans_datum { otype } only, and
+// db->filename_trans is a (struct hashtab *).
+static bool add_filename_trans(struct policydb *db, const char *s, const char *t, const char *c, const char *d,
+                               const char *o)
+{
+    struct type_datum *src, *tgt, *def;
+    struct class_datum *cls;
+    struct filename_trans *new_key = NULL;
+    struct filename_trans_datum *trans = NULL;
+    int rc;
+
+    src = symtab_search(&db->p_types, s);
+    if (src == NULL) {
+        pr_warn("source type %s does not exist\n", s);
+        return false;
+    }
+    tgt = symtab_search(&db->p_types, t);
+    if (tgt == NULL) {
+        pr_warn("target type %s does not exist\n", t);
+        return false;
+    }
+    cls = symtab_search(&db->p_classes, c);
+    if (cls == NULL) {
+        pr_warn("class %s does not exist\n", c);
+        return false;
+    }
+    def = symtab_search(&db->p_types, d);
+    if (def == NULL) {
+        pr_warn("default type %s does not exist\n", d);
+        return false;
+    }
+
+    new_key = (struct filename_trans *)kzalloc(sizeof(*new_key), GFP_KERNEL);
+    if (!new_key) {
+        pr_err("add_filename_trans: alloc filename_trans_key failed\n");
+        return false;
+    }
+    new_key->stype = src->value;
+    new_key->ttype = tgt->value;
+    new_key->tclass = (u16)cls->value;
+    new_key->name = kstrdup(o, GFP_KERNEL);
+    if (!new_key->name) {
+        pr_err("add_filename_trans: kstrdup name failed\n");
+        kfree(new_key);
+        return false;
+    }
+
+    trans = hashtab_search(db->filename_trans, new_key);
+    if (trans) {
+        // Duplicate, overwrite existing data and return
+        trans->otype = def->value;
+        kfree(new_key->name);
+        kfree(new_key);
+        return true;
+    }
+
+    trans = (struct filename_trans_datum *)kzalloc(sizeof(*trans), GFP_KERNEL);
+    if (!trans) {
+        pr_err("add_filename_trans: alloc filename_trans_datum failed\n");
+        kfree(new_key->name);
+        kfree(new_key);
+        return false;
+    }
+    trans->otype = def->value;
+
+    rc = hashtab_insert(db->filename_trans, new_key, trans);
+    if (rc) {
+        pr_err("add_filename_trans: hashtab_insert failed: %d\n", rc);
+        kfree(new_key->name);
+        kfree(new_key);
+        kfree(trans);
+        return false;
+    }
+
+    ebitmap_set_bit(&db->filename_trans_ttypes, tgt->value, 1);
+
+    return true;
+}
+#else
 static bool add_filename_trans(struct policydb *db, const char *s, const char *t, const char *c, const char *d,
                                const char *o)
 {
@@ -624,6 +705,7 @@ free_trans:
 out:
     return false;
 }
+#endif
 
 static bool add_genfscon(struct policydb *db, const char *fs_name, const char *path, const char *context)
 {
