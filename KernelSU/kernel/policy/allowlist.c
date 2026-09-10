@@ -2,6 +2,7 @@
 #include <linux/limits.h>
 #include <linux/rculist.h>
 #include <linux/mutex.h>
+#include <linux/sched/task.h>
 #include <linux/task_work.h>
 #include <linux/capability.h>
 #include <linux/compiler.h>
@@ -469,7 +470,12 @@ void ksu_persistent_allow_list()
         goto put_task;
     }
     cb->func = do_persistent_allow_list;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0)
     if (task_work_add(tsk, cb, TWA_RESUME)) {
+#else
+    // task_work_add() takes a bool notify flag before 5.9
+    if (task_work_add(tsk, cb, true)) {
+#endif
         kfree(cb);
         pr_warn("save_allow_list add task_work failed\n");
     }

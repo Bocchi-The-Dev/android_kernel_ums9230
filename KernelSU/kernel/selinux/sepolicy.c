@@ -893,6 +893,10 @@ bool ksu_genfscon(struct policydb *db, const char *fs_name, const char *path, co
 }
 
 // ======== sepolicy ========
+// Live policy replacement via the selinux_policy container only exists on
+// 6.6+. Older kernels (like 5.4 here) modify the live policydb in place,
+// so these helpers are not built there.
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
 
 void ksu_destroy_sepolicy(struct selinux_policy *pol)
 {
@@ -974,3 +978,5 @@ out_free_data:
 
     return ERR_PTR(ret);
 }
+
+#endif // LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)

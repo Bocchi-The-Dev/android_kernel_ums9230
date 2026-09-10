@@ -14,6 +14,7 @@
 #include <net/genetlink.h>
 #include <linux/moduleparam.h>
 #include <linux/mutex.h>
+#include <linux/version.h>
 // security/selinux/include/security.h
 #include <security.h>
 #include <ss/context.h>
@@ -32,6 +33,17 @@
 static DEFINE_MUTEX(selinux_hide_mutex);
 static bool ksu_selinux_hide_enabled __read_mostly = false;
 static bool ksu_selinux_hide_running __read_mostly = false;
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
+#define KSU_STATUS_LOCK() mutex_lock(&selinux_state.status_lock)
+#define KSU_STATUS_UNLOCK() mutex_unlock(&selinux_state.status_lock)
+#else
+// Kernels before 6.6 have no selinux_state.status_lock; serialize the fake
+// status page on our own mutex instead.
+static DEFINE_MUTEX(fake_status_mutex);
+#define KSU_STATUS_LOCK() mutex_lock(&fake_status_mutex)
+#define KSU_STATUS_UNLOCK() mutex_unlock(&fake_status_mutex)
+#endif
 
 enum sel_inos {
     SEL_ROOT_INO = 2,
@@ -249,15 +261,25 @@ static struct page *fake_status = NULL;
 
 static void initialize_fake_status()
 {
-    mutex_lock(&selinux_state.status_lock);
+    struct page *status_page;
+    struct selinux_kernel_status *status;
+
+    KSU_STATUS_LOCK();
     if (fake_status)
         goto out;
-    if (!selinux_state.status_page) {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
+    status_page = selinux_state.status_page;
+#else
+    // Kernels before 6.6 expose the status page through
+    // selinux_kernel_status_page() instead of selinux_state.status_page.
+    status_page = selinux_kernel_status_page(&selinux_state);
+#endif
+    if (!status_page) {
         pr_warn("initialize_fake_status: status_page not exist\n");
         goto out;
     }
 
-    struct selinux_kernel_status *status = page_address(selinux_state.status_page);
+    status = page_address(status_page);
     if (!status->enforcing && !ksu_late_loaded) {
         pr_warn("initialize_fake_status: skip not enforcing\n");
         goto out;
@@ -293,7 +315,7 @@ static void initialize_fake_status()
             new_status->policyload, new_status->enforcing);
 
 out:
-    mutex_unlock(&selinux_state.status_lock);
+    KSU_STATUS_UNLOCK();
 }
 
 typedef int (*sel_open_handle_status_fn)(struct inode *inode, struct file *filp);
@@ -302,9 +324,9 @@ static int my_sel_open_handle_status(struct inode *inode, struct file *filp)
 {
     if (likely(current_uid().val >= 10000 && ksu_selinux_hide_enabled)) {
         void *data;
-        mutex_lock(&selinux_state.status_lock);
+        KSU_STATUS_LOCK();
         data = fake_status;
-        mutex_unlock(&selinux_state.status_lock);
+        KSU_STATUS_UNLOCK();
         if (data) {
             filp->private_data = data;
             return 0;
@@ -346,7 +368,11 @@ static int ksu_selinux_hide_enable()
     }
 #else
     fake_state.initialized = true;
-    fake_state.policy = backup_sepolicy;
+    // No selinux_policy container before 6.6: alias the live state so the
+    // fallback queries below stay well-defined. selinux_hide itself stays
+    // unavailable without a backup policy (see ksu_selinux_hide_enable).
+    fake_state.ss = selinux_state.ss;
+    fake_state.avc = selinux_state.avc;
 #endif
 
     context_write = &selinux_write_op[SEL_CONTEXT];
@@ -517,15 +543,16 @@ void __exit ksu_selinux_hide_exit()
     }
     mutex_unlock(&selinux_hide_mutex);
     ksu_unregister_feature_handler(KSU_FEATURE_SELINUX_HIDE);
-    mutex_lock(&selinux_state.status_lock);
+    KSU_STATUS_LOCK();
     if (fake_status)
         __free_page(fake_status);
     fake_status = NULL;
-    mutex_unlock(&selinux_state.status_lock);
+    KSU_STATUS_UNLOCK();
 }
 
 void ksu_selinux_hide_drop_backup_if_unused()
 {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
     mutex_lock(&selinux_hide_mutex);
     if (!ksu_selinux_hide_running && backup_sepolicy) {
         pr_info("selinux_hide is not enabled - drop backup_sepolicy\n");
@@ -535,6 +562,9 @@ void ksu_selinux_hide_drop_backup_if_unused()
         backup_sepolicy = NULL;
     }
     mutex_unlock(&selinux_hide_mutex);
+#else
+    // No backup policy support before 6.6; nothing to drop.
+#endif
 }
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)

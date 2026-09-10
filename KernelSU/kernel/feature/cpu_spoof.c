@@ -153,7 +153,9 @@ int ksu_set_spoof_cpu(const struct ksu_set_spoof_cpu_cmd *cmd)
                 }
 #endif
 
-                /* Resolve 'curr_clocksource' double pointer and overwrite active clock mode */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0)
+                /* Resolve 'curr_clocksource' double pointer and overwrite active clock mode.
+                 * struct clocksource has no vdso_clock_mode member on 5.4 and older. */
                 {
                     struct clocksource **curr_cs_ptr =
                         (struct clocksource **)find_kernel_symbol_exact("curr_clocksource");
@@ -168,6 +170,7 @@ int ksu_set_spoof_cpu(const struct ksu_set_spoof_cpu_cmd *cmd)
                         pr_warn("ksu: set_spoof_cpu failed to resolve 'curr_clocksource'\n");
                     }
                 }
+#endif
 
                 /* Overwrite fallback default clock mode variable */
                 {
